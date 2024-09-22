@@ -7,7 +7,7 @@ EulerFD::EulerFD() : FDAlgorithm({kDefaultPhaseName}), mlfq_(kQueuesNumber) {
     last_pcover_ratios_.fill(1);
     RegisterOption(config::kCustomRandomFlagOpt(&custom_random_opt_));
 
-    // set configuration options
+    // Set configuration options
     RegisterOption(config::kTableOpt(&input_table_));
     RegisterOption(config::kEqualNullsOpt(&is_null_equal_null_));
     MakeOptionsAvailable({config::kTableOpt.GetName(), config::kEqualNullsOpt.GetName()});
@@ -31,8 +31,8 @@ void EulerFD::LoadDataInternal() {
         schema_->AppendColumn(column_name);
     }
 
-    // in each column mapping string values into integer values.
-    // using only hash isnt good idea because colisions dont processing
+    // In each column mapping string values into integer values.
+    // Using only hash isn't good idea because collisions don't processing.
     std::vector<std::unordered_map<std::string, size_t>> columns(number_of_attributes_);
     std::vector<size_t> current_id(number_of_attributes_, 0);
 
@@ -43,15 +43,16 @@ void EulerFD::LoadDataInternal() {
         }
 
         tuples_.emplace_back(std::vector<size_t>(number_of_attributes_));
+        auto &current_tuple = tuples_.back();
         for (size_t i = 0; i < number_of_attributes_; i++) {
             auto &values = columns[i];
             auto it = values.find(line[i]);
             if (it != values.end()) {
-                tuples_.back()[i] = it->second;
+                current_tuple[i] = it->second;
             } else {
                 size_t id = current_id[i]++;
                 values[std::move(line[i])] = id;
-                tuples_.back()[i] = id;
+                current_tuple[i] = id;
             }
         }
     }
@@ -59,21 +60,21 @@ void EulerFD::LoadDataInternal() {
 }
 
 void EulerFD::ResetStateFd() {
-    // data from sampling module
+    // Data from sampling module
     clusters_.clear();
     constant_columns_.clear();
     is_first_sample_ = true;
 
     mlfq_.Clear();
-    effective_treshold_ = kInitialEffectiveTreshold;
+    effective_treshold_ = kInitialEffectiveThreshold;
 
     invalids_.clear();
     new_invalids_.clear();
     fd_num_ = old_invalid_size_ = 0;
 
-    // data from p/ncover consturction modules
+    // Data from p/ncover construction modules
     attribute_indexes_.clear();
-    attribute_frequences_.clear();
+    attribute_frequencies_.clear();
 
     positive_cover_.clear();
     negative_cover_.clear();
@@ -85,7 +86,7 @@ void EulerFD::ResetStateFd() {
 }
 
 void EulerFD::SaveAnswer() {
-    if (attribute_indexes_.size() == 0) {
+    if (attribute_indexes_.empty()) {
         std::cout << "attribute_indexes_ size is 0\n";
         return;
     }
@@ -96,7 +97,7 @@ void EulerFD::SaveAnswer() {
     }
 
     for (size_t rhs_attr = 0; rhs_attr < number_of_attributes_; rhs_attr++) {
-        // then tree filling we use inverse indexes, so to get correct tree we inverse again
+        // Then tree filling we use inverse indexes, so to get correct tree we inverse again
         size_t inv_rhs_attr = inv_indexes[rhs_attr];
         auto &tree = positive_cover_[inv_rhs_attr];
         auto rhs = *schema_->GetColumn(rhs_attr);
@@ -111,18 +112,18 @@ void EulerFD::InitCovers() {
     positive_cover_.clear();
     positive_cover_.reserve(number_of_attributes_);
     for (size_t i = 0; i < number_of_attributes_; i++) {
-        positive_cover_.push_back(SearchTreeEulerFD(number_of_attributes_));
+        positive_cover_.emplace_back(SearchTreeEulerFD(number_of_attributes_));
         positive_cover_.back().Add(Bitset(number_of_attributes_));
     }
 
     negative_cover_.clear();
     negative_cover_.reserve(number_of_attributes_);
     for (size_t i = 0; i < number_of_attributes_; i++) {
-        negative_cover_.push_back(SearchTreeEulerFD(number_of_attributes_));
+        negative_cover_.emplace_back(SearchTreeEulerFD(number_of_attributes_));
     }
 
-    attribute_frequences_.resize(number_of_attributes_);
-    std::fill(attribute_frequences_.begin(), attribute_frequences_.end(), 0);
+    attribute_frequencies_.resize(number_of_attributes_);
+    std::fill(attribute_frequencies_.begin(), attribute_frequencies_.end(), 0);
 
     attribute_indexes_.clear();
 }
@@ -133,8 +134,8 @@ void EulerFD::BuildPartition() {
     }
     constant_columns_ = Bitset(number_of_attributes_);
 
-    // build partition: same values in each column unite into clusters,
-    // then stripping it: clusters with 1 element cant get us new invalid fd
+    // Build partition: same values in each column unite into clusters,
+    // then stripping it: clusters with 1 element can`t get us new invalid fd
     for (size_t attr_num = 0; attr_num < number_of_attributes_; attr_num++) {
         std::unordered_map<size_t, std::vector<size_t>> values;
         for (size_t tuple_num = 0; tuple_num < number_of_tuples_; tuple_num++) {
@@ -143,11 +144,11 @@ void EulerFD::BuildPartition() {
             similar_values.push_back(tuple_num);
         }
         if (values.size() == 1) {
-            // its mean in this column only one value
+            // This mean in this column only one value
             constant_columns_[attr_num] = true;
             continue;
         } else if (values.size() == number_of_tuples_) {
-            // its mean all clusters' sizes are 1, so we can pass cycle below
+            // This means that the sizes of all clusters are 1, so we can pass the cycle below
             continue;
         } else {
             for (auto &&[_, cluster] : values) {
@@ -169,12 +170,12 @@ EulerFD::Bitset EulerFD::BuildAgreeSet(size_t t1, size_t t2) const {
     return equal_attr;
 }
 
-double EulerFD::SamlingInCluster(Cluster *cluster) {
+double EulerFD::SamplingInCluster(Cluster *cluster) {
     return cluster->Sample([this](size_t t1, size_t t2) -> size_t {
         Bitset agree_set = BuildAgreeSet(t1, t2);
         auto &&[_, result] = invalids_.insert(agree_set);
 
-        // check is discovered fd new
+        // Check that this is a new FD
         if (result) {
             new_invalids_.insert(agree_set);
             return agree_set.size() - agree_set.count();
@@ -186,13 +187,13 @@ double EulerFD::SamlingInCluster(Cluster *cluster) {
 
 void EulerFD::Sampling() {
     if (is_first_sample_) {
-        // in first sampling mlfq is empty, we fiil it.
-        // ww put all clusters in mlfq, even if effective was 0
+        // In first sampling mlfq is empty, we fill it.
+        // We put all clusters in mlfq, even if effective coefficient was 0
         is_first_sample_ = false;
 
-        for (size_t i = 0; i < clusters_.size(); i++) {  // TODO: maybe ranged for
-            double eff = SamlingInCluster(&clusters_[i]);
-            mlfq_.Add(&clusters_[i], eff, true);
+        for (auto &cluster : clusters_) {
+            double eff = SamplingInCluster(&cluster);
+            mlfq_.Add(&cluster, eff, true);
         }
 
         if (mlfq_.GetLastQueueSize() > 0) {
@@ -202,11 +203,11 @@ void EulerFD::Sampling() {
         return;
     }
 
-    // sampling in first queues of mlfq;
+    // Sampling in first queues of mlfq
     new_invalids_.clear();
     while (mlfq_.GetEffectiveSize() > 0) {
         Cluster *cluster = mlfq_.Get();
-        SamlingInCluster(cluster);
+        SamplingInCluster(cluster);
         mlfq_.Add(cluster, cluster->GetAverage());
     }
 
@@ -214,10 +215,10 @@ void EulerFD::Sampling() {
         effective_treshold_ = std::min(effective_treshold_ / 4, mlfq_.MaxEffectInLastQueue() / 2);
     }
 
-    // sampling in last queues (it is priority queue) of mlfq;
+    // Sampling in last queues (it is priority queues) of mlfq
     while (mlfq_.GetLastQueueSize() > 0 && mlfq_.MaxEffectInLastQueue() >= effective_treshold_) {
         Cluster *cluster = mlfq_.Get();
-        SamlingInCluster(cluster);
+        SamplingInCluster(cluster);
         mlfq_.AddAtLast(cluster);
     }
 }
@@ -225,29 +226,29 @@ void EulerFD::Sampling() {
 bool EulerFD::IsNCoverGrowthSmall() const {
     double sum = std::accumulate(last_ncover_ratios_.begin(), last_ncover_ratios_.end(), 0.0);
     double grow_rate = sum / kWindow;
-    return grow_rate < kNegCoverGrowthTreshold;
+    return grow_rate < kNegCoverGrowthThreshold;
 }
 
 bool EulerFD::IsPCoverGrowthSmall() const {
     double sum = std::accumulate(last_pcover_ratios_.begin(), last_pcover_ratios_.end(), 0.0);
     double grow_rate = sum / kWindow;
-    return grow_rate < kPosCoverGrowthTreshold;
+    return grow_rate < kPosCoverGrowthThreshold;
 }
 
 std::vector<size_t> EulerFD::GetAttributesSortedByFrequency(
         std::vector<Bitset> const &neg_cover_vector) {
     for (auto const &bitset : neg_cover_vector) {
         for (size_t attr_num = 0; attr_num < number_of_attributes_; ++attr_num) {
-            attribute_frequences_[attr_num] += bitset[attr_num];
+            attribute_frequencies_[attr_num] += bitset[attr_num];
         }
     }
 
     std::vector<size_t> attr_indices(number_of_attributes_);
     std::iota(attr_indices.begin(), attr_indices.end(), 0);
 
-    // after sorting in indexes[0] is number of column with the largest number of 1
+    // After sorting in indexes[0] is number of column with the largest number of 1
     std::sort(attr_indices.begin(), attr_indices.end(), [&](size_t lhs, size_t rhs) {
-        return attribute_frequences_[lhs] < attribute_frequences_[rhs];
+        return attribute_frequencies_[lhs] < attribute_frequencies_[rhs];
     });
 
     return attr_indices;
@@ -310,7 +311,7 @@ size_t EulerFD::Invert(size_t rhs, std::vector<Bitset> const &neg) {
                 Bitset copy = removed;
                 copy.set(i);
                 if (!tree.ContainsAnySubsetOf(copy)) {
-                    tree.Add(copy);
+                    tree.Add(std::move(copy));
                 }
             }
         }
@@ -319,7 +320,7 @@ size_t EulerFD::Invert(size_t rhs, std::vector<Bitset> const &neg) {
 }
 
 size_t EulerFD::GenerateResults() {
-    // check is new non fd discovered
+    // Check is new non fd discovered
     if (old_invalid_size_ == invalids_.size()) {
         return fd_num_;
     }
@@ -328,7 +329,7 @@ size_t EulerFD::GenerateResults() {
     std::vector<Bitset> neg_cover_vector(new_invalids_.begin(), new_invalids_.end());
     auto new_indexes = GetAttributesSortedByFrequency(neg_cover_vector);
 
-    // check is rebuild of covers neccesary
+    // Check is rebuild of covers neccesary
     if (attribute_indexes_ != new_indexes) {
         if (old_invalid_size_ != 0) {
             InitCovers();
@@ -343,16 +344,16 @@ size_t EulerFD::GenerateResults() {
         inv_indexes[attribute_indexes_[i]] = i;
     }
 
-    // change attribute order, in first index the largset number of 1
+    // Change attribute order, in first index set with the largest number of 1
     for (auto &neg_cover_el : neg_cover_vector) {
         neg_cover_el = ChangeAttributesOrder(neg_cover_el, inv_indexes);
     }
 
-    // sorting all non fd by number of 1
+    // Sorting all non fd by number of 1
     std::sort(neg_cover_vector.begin(), neg_cover_vector.end(),
               [](Bitset const &left, Bitset const &right) { return left.count() > right.count(); });
 
-    // creating ncover and pcover trees for each rhs
+    // Creating ncover and pcover trees for each rhs
     size_t fd_num = 0;
     for (size_t rhs = 0; rhs < number_of_attributes_; rhs++) {
         if (constant_columns_[rhs]) {
@@ -361,7 +362,7 @@ size_t EulerFD::GenerateResults() {
 
         size_t real_rhs = inv_indexes[rhs];
         auto neg = CreateNegativeCover(real_rhs, neg_cover_vector);
-        // sorting all non fd by number of 1
+        // Sorting all non fd by number of 1
         std::sort(neg.begin(), neg.end(), [](Bitset const &left, Bitset const &right) {
             return left.count() > right.count();
         });
@@ -375,7 +376,7 @@ unsigned long long EulerFD::ExecuteInternal() {
         return 0;
     }
 
-    // choose random strategy (it is neccesary for stable unit tests)
+    // Choose random strategy (it is necessary for stable unit tests)
     if (custom_random_opt_.first) {
         random_ = std::make_unique<CustomRandom>(custom_random_opt_.second);
         rand_function_ = [&]() { return random_->NextInt(kRandomUpperBound); };
@@ -387,8 +388,8 @@ unsigned long long EulerFD::ExecuteInternal() {
     auto start_time = std::chrono::system_clock::now();
 
     BuildPartition();
-    if (clusters_.size() == 0) {
-        // in small datasets sometimes after clusters stripping there are no clusters for sampling
+    if (clusters_.empty()) {
+        // In small datasets sometimes after clusters stripping there are no clusters for sampling
         std::cout << "number of clusters is 0*\n";
         return 0;
     }
@@ -400,10 +401,9 @@ unsigned long long EulerFD::ExecuteInternal() {
         Sampling();
 
         last_ncover_ratios_[iteration_number % kWindow] =
-                invalids_.size() == 0 ? 0
-                                      : (double)(invalids_.size() - ncover_size) / invalids_.size();
+                invalids_.empty() ? 0 : (double)(invalids_.size() - ncover_size) / invalids_.size();
 
-        // check criterion for enter second EulerFD cycle
+        // Check criterion for enter second EulerFD cycle
         if (IsNCoverGrowthSmall()) {
             size_t pcover_size = fd_num_;
             fd_num_ = GenerateResults();

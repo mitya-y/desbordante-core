@@ -116,7 +116,8 @@ boost::any CustomRandomFlagToAny(std::string_view option_name, py::handle obj) {
     }
     auto tup = py::cast<py::tuple>(obj);
     if (py::len(tup) != 2) {
-        throw config::ConfigurationError("Tuple for converting into std::pair must get 2 fields.");
+        throw config::ConfigurationError(
+                "Tuple for converting into std::pair must contain 2 fields.");
     }
     bool flag = CastAndReplaceCastError<bool>(option_name, tup[0]);
     int seed = CastAndReplaceCastError<int>(option_name, tup[1]);

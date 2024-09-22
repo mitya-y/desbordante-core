@@ -252,8 +252,8 @@ void SearchTreeEulerFD::InsertLeafIntoEnd(std::shared_ptr<Node> const& current_n
         current_node->bit_ = set_bit;
     }
 
-    current_node->left_ = new_left;
-    current_node->right_ = new_right;
+    current_node->left_ = std::move(new_left);
+    current_node->right_ = std::move(new_right);
 
     UpdateInterAndUnion(current_node);
 }
@@ -274,8 +274,8 @@ void SearchTreeEulerFD::InsertLeafIntoMiddle(std::shared_ptr<Node> const& curren
     current_node->right_->parent_ = replacing_node;
 
     current_node->bit_ = set_bit;
-    current_node->left_ = new_left;
-    current_node->right_ = new_right;
+    current_node->left_ = std::move(new_left);
+    current_node->right_ = std::move(new_right);
 
     UpdateInterAndUnion(current_node);
 }
@@ -293,7 +293,7 @@ bool SearchTreeEulerFD::SupersetsTraverse(Bitset const& set,
 }
 
 bool SearchTreeEulerFD::ContainsAnySupersetOf(Bitset const& set) const {
-    return root_ ? SupersetsTraverse(set, root_) : false;
+    return root_ && SupersetsTraverse(set, root_);
 }
 
 }  // namespace algos
